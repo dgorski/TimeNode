@@ -1,3 +1,17 @@
+/*
+ * This code implements a simple LCD clock, using an RTC to store time and GPS to keep it current
+ * 
+ * Hardware:
+ * D1 Mini (ESP-12F)
+ * DS3231 I2C based RTC module
+ * 2x16 LCD with I2C backpack
+ * NEO 6M compatible GPS module
+ * 
+ * https://github.com/dgorski/TimeNode
+ * 
+ * darrin(a)gorski.net 1/8/2019
+ */
+
 #include <Timezone.h>
 
 #include <Wire.h>
