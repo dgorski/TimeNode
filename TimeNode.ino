@@ -13,7 +13,6 @@
  */
 
 #include <Timezone.h>
-
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <RTClib.h>
@@ -22,8 +21,8 @@
 
 //  #if !defined(PIN_WIRE_SDA) || !defined(PIN_WIRE_SCL)
 // these are the default I2C pins for the ESP8266 ESP-12 module
-#define I2C_SCL_PIN 5
-#define I2C_SDA_PIN 4
+#define I2C_SCL_PIN 5   //D1
+#define I2C_SDA_PIN 4   //D2
 
 // I2C device addresses
 #define I2C_DEV_LCD_ADDR 0x3F
@@ -32,18 +31,31 @@
 
 // pin for RTC square-wave - set for 1HZ in setup()
 // used for updating of the LCD display (otherwise not needed)
-#define RTC_SQW_PIN 13
+#define RTC_SQW_PIN 13  //D7
 
 // pins for GPS
-#define GPS_TX_PIN 16
-#define GPS_RX_PIN 14
+#define GPS_TX_PIN 16   //D0
+#define GPS_RX_PIN 14   //D5
+
 // PPS is used for aligning the beginning of the second
 // required for precise timing (otherwise will always be "late")
-#define GPS_PPS_PIN 15
+#define GPS_PPS_PIN 12 // D6
 
 #define GPS_BAUD_RATE 9600
 
-#define TZ_BUTTON_PIN 12
+#define TZ_BUTTON_PIN 0 //D3
+
+// #define DEBUG_SERIAL
+
+#ifdef DEBUG_SERIAL
+  #define DEBUG_PRINT(x)     Serial.print(x)
+  #define DEBUG_PRINTF(...)  Serial.printf(__VA_ARGS__)
+  #define DEBUG_PRINTLN(x)   Serial.println(x)
+#else
+  #define DEBUG_PRINT(x)
+  #define DEBUG_PRINTF(...)
+  #define DEBUG_PRINTLN(x)
+#endif
 
 // global object instances
 LiquidCrystal_I2C lcd(I2C_DEV_LCD_ADDR, 16, 2);  // address 0x3F, 2 lines x 16 chars
@@ -115,7 +127,7 @@ void getFreshTimeStamp() {
   static boolean DEBUG_TIMESTAMP = false;
 
   if(DEBUG_TIMESTAMP)
-    Serial.printf("\n{+TS} (%ld)\n", millis());
+    DEBUG_PRINTF("\n{+TS} (%ld)\n", millis());
 
   int year;
   byte month, day, hour, minute, second, hundredths;
@@ -124,10 +136,10 @@ void getFreshTimeStamp() {
   gps.crack_datetime(&year, &month, &day, &hour, &minute, &second, &hundredths, &age);
   if(age == TinyGPS::GPS_INVALID_AGE) {
     if(DEBUG_TIMESTAMP)
-      Serial.print("   GPS ::   date not valid: GPS_INVALID_AGE\n");
+      DEBUG_PRINTLN("   GPS ::   date not valid: GPS_INVALID_AGE");
   } else {
     if(DEBUG_TIMESTAMP)
-      Serial.printf("   GPS ::   %02d/%02d/%02d   %02d:%02d:%02d  (age %ld)\n", 
+      DEBUG_PRINTF("   GPS ::   %02d/%02d/%02d   %02d:%02d:%02d  (age %ld)\n", 
         year, month, day, hour, minute, second, age);
 
     // these two are globals
@@ -138,12 +150,12 @@ void getFreshTimeStamp() {
 
   if(DEBUG_TIMESTAMP) {
     DateTime ts = rtc.now();
-    Serial.printf("   RTC ::   %02d/%02d/%02d   %02d:%02d:%02d\n", ts.year(), ts.month(), ts.day(), ts.hour(), ts.minute(), ts.second());
+    DEBUG_PRINTF("   RTC ::   %02d/%02d/%02d   %02d:%02d:%02d\n", ts.year(), ts.month(), ts.day(), ts.hour(), ts.minute(), ts.second());
 
     ts = soft_rtc.now();
-    Serial.printf("   SYS ::   %02d/%02d/%02d   %02d:%02d:%02d\n", ts.year(), ts.month(), ts.day(), ts.hour(), ts.minute(), ts.second());
+    DEBUG_PRINTF("   SYS ::   %02d/%02d/%02d   %02d:%02d:%02d\n", ts.year(), ts.month(), ts.day(), ts.hour(), ts.minute(), ts.second());
 
-    Serial.println("{-TS}");
+    DEBUG_PRINTLN("{-TS}");
   }
 }
 
@@ -180,7 +192,6 @@ void processGpsIo() {
   boolean completeMessage = false;
   while(gps_io.available()) {
     char c = gps_io.read();
-    //Serial.print(c);
     if(completeMessage = gps.encode(c)) {
       break; // encode() found a complete frame
     }
@@ -293,7 +304,7 @@ void processRtcInterrupt() {
   if(newRtcSecond > 0) {
 /*
     unsigned long thenMilli = newRtcSecond; // sprintf() gets zero from the volitile
-    Serial.printf("\n--> 1HZ <-- (%ld / %ld)\n", thenMilli, millis());
+    DEBUG_PRINTF("\n--> 1HZ <-- (%ld / %ld)\n", thenMilli, millis());
 */
     updateLcdDisplay();
     saveTimeZoneSelection();
@@ -309,7 +320,7 @@ void processGpsInterrupt() {
 /*
     unsigned long nowMilli = millis();
     unsigned long thenMilli = newGpsSecond; // sprintf() sees zero in the volitile, copy
-    Serial.printf("\n--> PPS <-- (%ld / %ld)\n", thenMilli, nowMilli);
+    DEBUG_PRINTF("\n--> PPS <-- (%ld / %ld)\n", thenMilli, nowMilli);
 */
     newGpsSecond = 0; // reset
     /* If the last GPS timestamp was received less than 1 second ago
@@ -397,33 +408,38 @@ int clearI2C() {
 }
 
 void setup() {
+
+#ifdef DEBUG_SERIAL
   // for debugging. don't use RX; make that GPIO available if needed
   Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY);
+#endif
 
-  Serial.println("\n\nStartup");
+  DEBUG_PRINTLN("\n\nStartup");
 
-  //Serial.println("Starting Wifi");
+  //DEBUG_PRINTLN("Starting Wifi");
   //wifi_setup();
 
-  Serial.println("Clearing I2C bus");
+  DEBUG_PRINTLN("Clearing I2C bus");
   int i2c_state = clearI2C();
   if(i2c_state) {
-    Serial.println("ERROR: Cannot clear/reset I2C bus.  Resetting.");
+    DEBUG_PRINTLN("ERROR: Cannot clear/reset I2C bus.  Resetting.");
     ESP.reset();
   }
 
-  Serial.println("Starting Wire");
+  DEBUG_PRINTLN("Starting Wire");
   Wire.begin();
   delay(500); // let the I2C bus settle
 
-  Serial.println("Setting up RTC");
+  DEBUG_PRINTLN("Setting up RTC");
+
   pinMode(RTC_SQW_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(RTC_SQW_PIN), rtcInterruptHandler, RISING);
   rtc.writeSqwPinMode(DS3231_SquareWave1Hz); //rtc.writeSqwPinMode(DS3231_OFF);
   soft_rtc.adjust(rtc.now()); // set the software driver from the stored time
   restoreTimeZoneSelection(); // read the TZ index from EEPROM
 
-  Serial.println("Starting LCD");
+  DEBUG_PRINTLN("Starting LCD");
+
   lcd.begin(16, 2, 0); // initialize the lcd without calling Wire.begin() again
   lcd.backlight();
 
@@ -436,14 +452,15 @@ void setup() {
   lcd.setCursor(0, 1);
   lcd.print("                ");
 
-  Serial.println("Starting GPS serial interface");
+  DEBUG_PRINTLN("Starting GPS serial interface");
+
   attachInterrupt(digitalPinToInterrupt(GPS_PPS_PIN), gpsInterruptHandler, RISING);
 
   gps_io.begin(GPS_BAUD_RATE);
 
   pinMode(TZ_BUTTON_PIN, INPUT_PULLUP);
 
-  Serial.println("Setup complete.");
+  DEBUG_PRINTLN("Setup complete.");
 }
 
 void loop() {
@@ -457,3 +474,4 @@ void loop() {
 
   //server.handleClient(); // web server
 }
+
